@@ -2,6 +2,7 @@ import * as PIXI from "pixi.js";
 import { Camera } from "@/game/render/Camera";
 import { createGridLayer } from "@/game/render/GridLayer";
 import { WallLayer } from "@/game/render/WallLayer";
+import { RoomLayer } from "@/game/render/RoomLayer";
 import { THEME } from "@/game/render/theme";
 import { worldToGrid, isInBounds } from "@/game/building/grid";
 import { closestEdge, normalizeWall } from "@/game/building/walls";
@@ -21,16 +22,18 @@ export class PixiGame {
   readonly camera: Camera;
 
   private wallLayer: WallLayer;
-  private unsubscribeWalls: () => void = () => {};
+  private roomLayer: RoomLayer;
+  private unsubscribeStore: () => void = () => {};
 
   private isPanning = false;
   private isPaintingWalls = false;
   private lastPointerScreen: WorldCoord = { x: 0, y: 0 };
 
-  private constructor(app: PIXI.Application, camera: Camera, wallLayer: WallLayer) {
+  private constructor(app: PIXI.Application, camera: Camera, wallLayer: WallLayer, roomLayer: RoomLayer) {
     this.app = app;
     this.camera = camera;
     this.wallLayer = wallLayer;
+    this.roomLayer = roomLayer;
   }
 
   static async create(container: HTMLDivElement): Promise<PixiGame> {
@@ -50,12 +53,15 @@ export class PixiGame {
     const camera = new Camera(world);
     camera.pan(64, 48); // small initial offset so the map origin isn't flush with the corner
 
+    const roomLayer = new RoomLayer();
+    world.addChild(roomLayer.graphics);
+
     world.addChild(createGridLayer());
 
     const wallLayer = new WallLayer();
     world.addChild(wallLayer.graphics);
 
-    const game = new PixiGame(app, camera, wallLayer);
+    const game = new PixiGame(app, camera, wallLayer, roomLayer);
     game.setupInput(container);
     game.subscribeToStore();
 
@@ -63,9 +69,13 @@ export class PixiGame {
   }
 
   private subscribeToStore(): void {
-    this.wallLayer.redraw(buildingStore.getState().walls.values());
-    this.unsubscribeWalls = buildingStore.subscribe((state) => {
-      this.wallLayer.redraw(state.walls.values());
+    const state = buildingStore.getState();
+    this.wallLayer.redraw(state.walls.values());
+    this.roomLayer.redraw(state.rooms);
+
+    this.unsubscribeStore = buildingStore.subscribe((next) => {
+      this.wallLayer.redraw(next.walls.values());
+      this.roomLayer.redraw(next.rooms);
     });
   }
 
@@ -132,7 +142,7 @@ export class PixiGame {
   }
 
   destroy(): void {
-    this.unsubscribeWalls();
+    this.unsubscribeStore();
     this.app.destroy(true, { children: true });
   }
 }

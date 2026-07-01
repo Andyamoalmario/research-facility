@@ -2,6 +2,8 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand/react";
 import type { WallSegment } from "@/types/grid";
 import { wallKey } from "@/types/grid";
+import type { Room } from "@/types/room";
+import { detectRooms } from "@/game/building/rooms";
 
 export type BuildTool = "none" | "wall" | "demolish";
 
@@ -9,6 +11,8 @@ export interface BuildingState {
   activeTool: BuildTool;
   /** Placed walls, keyed by wallKey() for O(1) lookup and de-duplication. */
   walls: Map<string, WallSegment>;
+  /** Enclosed regions detected from the current wall layout. Recomputed on every wall edit. */
+  rooms: Room[];
   setTool: (tool: BuildTool) => void;
   addWall: (wall: WallSegment) => void;
   removeWall: (wall: WallSegment) => void;
@@ -22,6 +26,7 @@ export interface BuildingState {
 export const buildingStore = createStore<BuildingState>((set, get) => ({
   activeTool: "none",
   walls: new Map(),
+  rooms: [],
 
   setTool: (tool) => set({ activeTool: tool }),
 
@@ -31,7 +36,7 @@ export const buildingStore = createStore<BuildingState>((set, get) => ({
       if (state.walls.has(key)) return state;
       const next = new Map(state.walls);
       next.set(key, wall);
-      return { walls: next };
+      return { walls: next, rooms: detectRooms(next) };
     }),
 
   removeWall: (wall) =>
@@ -40,7 +45,7 @@ export const buildingStore = createStore<BuildingState>((set, get) => ({
       if (!state.walls.has(key)) return state;
       const next = new Map(state.walls);
       next.delete(key);
-      return { walls: next };
+      return { walls: next, rooms: detectRooms(next) };
     }),
 
   hasWall: (wall) => get().walls.has(wallKey(wall)),
