@@ -2,10 +2,11 @@ import * as PIXI from "pixi.js";
 import { Camera } from "@/game/render/Camera";
 import { createGridLayer } from "@/game/render/GridLayer";
 import { WallLayer } from "@/game/render/WallLayer";
+import { GhostWallLayer } from "@/game/render/GhostWallLayer";
 import { RoomLayer } from "@/game/render/RoomLayer";
 import { THEME } from "@/game/render/theme";
-import { worldToGrid, isInBounds } from "@/game/building/grid";
-import { closestEdge, normalizeWall } from "@/game/building/walls";
+import { nearestGridPoint, wallsForDrag } from "@/game/building/wallDrag";
+import type { GridPoint } from "@/game/building/wallDrag";
 import { buildingStore } from "@/stores/buildingStore";
 import type { WorldCoord } from "@/types/grid";
 
@@ -22,17 +23,27 @@ export class PixiGame {
   readonly camera: Camera;
 
   private wallLayer: WallLayer;
+  private ghostWallLayer: GhostWallLayer;
   private roomLayer: RoomLayer;
   private unsubscribeStore: () => void = () => {};
 
   private isPanning = false;
-  private isPaintingWalls = false;
   private lastPointerScreen: WorldCoord = { x: 0, y: 0 };
 
-  private constructor(app: PIXI.Application, camera: Camera, wallLayer: WallLayer, roomLayer: RoomLayer) {
+  /** Start corner of an in-progress wall drag, in grid-point coordinates (null when not dragging). */
+  private wallDragStart: GridPoint | null = null;
+
+  private constructor(
+    app: PIXI.Application,
+    camera: Camera,
+    wallLayer: WallLayer,
+    ghostWallLayer: GhostWallLayer,
+    roomLayer: RoomLayer,
+  ) {
     this.app = app;
     this.camera = camera;
     this.wallLayer = wallLayer;
+    this.ghostWallLayer = ghostWallLayer;
     this.roomLayer = roomLayer;
   }
 
@@ -61,7 +72,10 @@ export class PixiGame {
     const wallLayer = new WallLayer();
     world.addChild(wallLayer.graphics);
 
-    const game = new PixiGame(app, camera, wallLayer, roomLayer);
+    const ghostWallLayer = new GhostWallLayer();
+    world.addChild(ghostWallLayer.graphics);
+
+    const game = new PixiGame(app, camera, wallLayer, ghostWallLayer, roomLayer);
     game.setupInput(container);
     game.subscribeToStore();
 
@@ -95,8 +109,7 @@ export class PixiGame {
         this.isPanning = true;
         this.lastPointerScreen = { x: e.global.x, y: e.global.y };
       } else if (isLeftButton && tool === "wall") {
-        this.isPaintingWalls = true;
-        this.paintWallAt(e.global);
+        this.wallDragStart = nearestGridPoint(this.camera.screenToWorld(e.global));
       }
     });
 
@@ -106,17 +119,31 @@ export class PixiGame {
         const dy = e.global.y - this.lastPointerScreen.y;
         this.camera.pan(dx, dy);
         this.lastPointerScreen = { x: e.global.x, y: e.global.y };
-      } else if (this.isPaintingWalls) {
-        this.paintWallAt(e.global);
+      } else if (this.wallDragStart) {
+        const current = nearestGridPoint(this.camera.screenToWorld(e.global));
+        this.ghostWallLayer.redraw(wallsForDrag(this.wallDragStart, current));
       }
     });
 
-    const stopInteraction = () => {
-      this.isPanning = false;
-      this.isPaintingWalls = false;
+    const commitWallDrag = (e: PIXI.FederatedPointerEvent) => {
+      if (!this.wallDragStart) return;
+      const end = nearestGridPoint(this.camera.screenToWorld(e.global));
+      const walls = wallsForDrag(this.wallDragStart, end);
+      for (const wall of walls) {
+        buildingStore.getState().addWall(wall);
+      }
+      this.wallDragStart = null;
+      this.ghostWallLayer.redraw([]);
     };
-    stage.on("pointerup", stopInteraction);
-    stage.on("pointerupoutside", stopInteraction);
+
+    stage.on("pointerup", (e: PIXI.FederatedPointerEvent) => {
+      this.isPanning = false;
+      commitWallDrag(e);
+    });
+    stage.on("pointerupoutside", (e: PIXI.FederatedPointerEvent) => {
+      this.isPanning = false;
+      commitWallDrag(e);
+    });
 
     container.addEventListener(
       "wheel",
@@ -129,16 +156,6 @@ export class PixiGame {
       },
       { passive: false },
     );
-  }
-
-  private paintWallAt(screenPoint: PIXI.PointData): void {
-    const worldPoint = this.camera.screenToWorld(screenPoint);
-    const cell = worldToGrid(worldPoint);
-    if (!isInBounds(cell)) return;
-
-    const edge = closestEdge(worldPoint, cell);
-    const wall = normalizeWall({ cell, edge });
-    buildingStore.getState().addWall(wall);
   }
 
   destroy(): void {
