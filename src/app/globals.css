@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/*
+ * Palette tecnica: grigio scuro / blu notte con accenti verde monitor,
+ * giallo warning, rosso emergenza. Mantenuta in sync manualmente con
+ * game/render/theme.ts (Pixi non legge le CSS custom properties).
+ */
+:root {
+  --color-bg-void: #0b0d10;
+  --color-bg-panel: #12161c;
+  --color-blue-night: #16233a;
+  --color-blue-night-light: #26456e;
+  --color-green-monitor: #35d67c;
+  --color-yellow-warning: #e8b93b;
+  --color-red-emergency: #e5484d;
+  --color-grid-line: #1f2731;
+  --color-text-primary: #dbe4ee;
+  --color-text-secondary: #7c8797;
+}
+
+@theme inline {
+  --color-bg-void: var(--color-bg-void);
+  --color-bg-panel: var(--color-bg-panel);
+  --color-blue-night: var(--color-blue-night);
+  --color-blue-night-light: var(--color-blue-night-light);
+  --color-green-monitor: var(--color-green-monitor);
+  --color-yellow-warning: var(--color-yellow-warning);
+  --color-red-emergency: var(--color-red-emergency);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+}
+
+body {
+  background: var(--color-bg-void);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
